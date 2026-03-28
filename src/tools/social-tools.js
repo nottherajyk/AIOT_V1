@@ -1,0 +1,480 @@
+import { showToast } from '../components/toast.js';
+import { downloadBlob, renderDropZone, formatBytes } from '../utils.js';
+
+export function socialToolHandler(tool) {
+  setTimeout(() => setupSocialTool(tool.id), 50);
+  window.addEventListener('page-rendered', () => setupSocialTool(tool.id), { once: true });
+
+  switch (tool.id) {
+    case 'thumbnail-grabber': return renderThumbnailGrabber();
+    case 'tweet-generator': return renderTweetGenerator();
+    case 'youtube-tags': return renderYouTubeTags();
+    case 'instagram-post': return renderInstagramPost();
+    case 'x-image-slicer': return renderXImageSlicer();
+    default: return `<p>Tool coming soon!</p>`;
+  }
+}
+
+function renderThumbnailGrabber() {
+  return `
+    <div class="form-group">
+      <label class="form-label">YouTube Video URL</label>
+      <input type="text" class="form-input" id="ytUrl" placeholder="https://www.youtube.com/watch?v=..." />
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-primary" id="grabBtn">🖼️ Grab Thumbnails</button>
+    </div>
+    <div class="result-area" id="resultArea">
+      <div id="thumbnailGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem"></div>
+    </div>
+  `;
+}
+
+function renderTweetGenerator() {
+  return `
+    <div class="form-row">
+      <div class="form-group" style="flex:2">
+        <label class="form-label">Display Name</label>
+        <input type="text" class="form-input" id="tweetName" value="John Doe" />
+      </div>
+      <div class="form-group" style="flex:1">
+        <label class="form-label">Handle</label>
+        <input type="text" class="form-input" id="tweetHandle" value="@johndoe" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tweet Text</label>
+      <textarea class="form-textarea" id="tweetText" placeholder="What's happening?" maxlength="280" style="min-height:80px"></textarea>
+      <div id="charCount" style="text-align:right;font-size:.8rem;color:var(--text-muted)">0/280</div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Likes</label>
+        <input type="text" class="form-input" id="tweetLikes" value="1.2K" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Retweets</label>
+        <input type="text" class="form-input" id="tweetRTs" value="342" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Comments</label>
+        <input type="text" class="form-input" id="tweetComments" value="89" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Theme</label>
+      <select class="form-select" id="tweetTheme">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-primary" id="generateBtn">🐦 Generate Tweet</button>
+      <button class="btn btn-secondary" id="downloadTweetBtn" disabled>📥 Download PNG</button>
+    </div>
+    <div class="preview-area" id="previewArea" style="display:none">
+      <h3>Preview</h3>
+      <canvas id="tweetCanvas" style="max-width:100%;border-radius:12px"></canvas>
+    </div>
+  `;
+}
+
+function renderYouTubeTags() {
+  return `
+    <div class="form-group">
+      <label class="form-label">YouTube Video URL</label>
+      <input type="text" class="form-input" id="ytTagUrl" placeholder="https://www.youtube.com/watch?v=..." />
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-primary" id="extractBtn">🏷️ Extract Tags</button>
+    </div>
+    <div class="result-area" id="resultArea">
+      <p style="font-size:.85rem;color:var(--text-muted)">Note: Due to API restrictions, this tool extracts tags from the page meta data. Some videos may not expose tags.</p>
+      <div id="tagsOutput"></div>
+    </div>
+  `;
+}
+
+function renderInstagramPost() {
+  return `
+    <div class="form-row">
+      <div class="form-group" style="flex:2">
+        <label class="form-label">Username</label>
+        <input type="text" class="form-input" id="igUser" value="photographer" />
+      </div>
+      <div class="form-group" style="flex:1">
+        <label class="form-label">Likes</label>
+        <input type="text" class="form-input" id="igLikes" value="4,521" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Caption</label>
+      <textarea class="form-textarea" id="igCaption" placeholder="Write your caption..." style="min-height:80px">Beautiful sunset 🌅 #photography #nature</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Background Color</label>
+      <input type="color" class="form-input" id="igBgColor" value="#f5f5f5" style="height:40px;padding:2px" />
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-primary" id="generateBtn">📸 Generate Post</button>
+      <button class="btn btn-secondary" id="downloadBtn" disabled>📥 Download</button>
+    </div>
+    <div class="preview-area" id="previewArea" style="display:none">
+      <canvas id="igCanvas" style="max-width:100%;border-radius:8px"></canvas>
+    </div>
+  `;
+}
+
+function renderXImageSlicer() {
+  return `
+    ${renderDropZone('xSlicer', '.jpg,.jpeg,.png,.webp', 'Drop your image to slice for X')}
+    <div id="fileInfoArea"></div>
+    <div class="form-group" style="margin-top:1rem">
+      <label class="form-label">Grid Layout</label>
+      <select class="form-select" id="gridLayout">
+        <option value="2x1">2 parts (2×1)</option>
+        <option value="2x2">4 parts (2×2)</option>
+        <option value="3x1">3 parts (3×1)</option>
+        <option value="3x2">6 parts (3×2)</option>
+      </select>
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-primary" id="sliceBtn" disabled>✂️ Slice & Download All</button>
+    </div>
+    <div class="preview-area" id="previewArea" style="display:none">
+      <h3>Preview</h3>
+      <div id="sliceGrid" style="display:grid;gap:4px"></div>
+    </div>
+  `;
+}
+
+
+// ===== SETUP LOGIC =====
+function setupSocialTool(toolId) {
+  // Thumbnail Grabber
+  if (toolId === 'thumbnail-grabber') {
+    document.getElementById('grabBtn')?.addEventListener('click', () => {
+      const url = document.getElementById('ytUrl')?.value.trim();
+      if (!url) { showToast('Please enter a YouTube URL', 'error'); return; }
+      const videoId = extractYTId(url);
+      if (!videoId) { showToast('Invalid YouTube URL', 'error'); return; }
+
+      const sizes = [
+        { name: 'Max Resolution', url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` },
+        { name: 'Standard', url: `https://img.youtube.com/vi/${videoId}/sddefault.jpg` },
+        { name: 'High Quality', url: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` },
+        { name: 'Medium', url: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` },
+        { name: 'Default', url: `https://img.youtube.com/vi/${videoId}/default.jpg` },
+      ];
+
+      const grid = document.getElementById('thumbnailGrid');
+      const resultArea = document.getElementById('resultArea');
+      if (grid && resultArea) {
+        resultArea.classList.add('visible');
+        grid.innerHTML = sizes.map(s => `
+          <div class="thumbnail-card" style="background:var(--surface);border-radius:12px;overflow:hidden;border:1px solid var(--border)">
+            <img src="${s.url}" alt="${s.name}" style="width:100%;display:block" onerror="this.style.display='none'" />
+            <div style="padding:.75rem">
+              <div style="font-size:.85rem;font-weight:600;margin-bottom:.5rem">${s.name}</div>
+              <a href="${s.url}" download="${videoId}-${s.name.toLowerCase().replace(/\s+/g,'-')}.jpg" target="_blank" class="btn btn-secondary" style="font-size:.8rem;padding:.35rem .75rem">📥 Download</a>
+            </div>
+          </div>
+        `).join('');
+      }
+      showToast('Thumbnails loaded!');
+    });
+  }
+
+  // Tweet Generator
+  if (toolId === 'tweet-generator') {
+    const textarea = document.getElementById('tweetText');
+    const counter = document.getElementById('charCount');
+    if (textarea && counter) {
+      textarea.addEventListener('input', () => { counter.textContent = textarea.value.length + '/280'; });
+    }
+
+    document.getElementById('generateBtn')?.addEventListener('click', () => {
+      const canvas = document.getElementById('tweetCanvas');
+      const preview = document.getElementById('previewArea');
+      if (!canvas || !preview) return;
+      preview.style.display = '';
+
+      const name = document.getElementById('tweetName')?.value || 'User';
+      const handle = document.getElementById('tweetHandle')?.value || '@user';
+      const text = document.getElementById('tweetText')?.value || '';
+      const likes = document.getElementById('tweetLikes')?.value || '0';
+      const rts = document.getElementById('tweetRTs')?.value || '0';
+      const comments = document.getElementById('tweetComments')?.value || '0';
+      const theme = document.getElementById('tweetTheme')?.value || 'dark';
+
+      const isDark = theme === 'dark';
+      const bg = isDark ? '#15202b' : '#ffffff';
+      const fg = isDark ? '#ffffff' : '#0f1419';
+      const muted = isDark ? '#8899a6' : '#536471';
+
+      canvas.width = 550;
+      canvas.height = 280;
+      const ctx = canvas.getContext('2d');
+
+      // Background
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, 550, 280);
+
+      // Avatar circle
+      ctx.fillStyle = '#1da1f2';
+      ctx.beginPath();
+      ctx.arc(40, 45, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(name[0]?.toUpperCase() || 'U', 40, 51);
+
+      // Name & handle
+      ctx.textAlign = 'left';
+      ctx.fillStyle = fg;
+      ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText(name, 72, 38);
+      ctx.fillStyle = muted;
+      ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText(handle, 72, 56);
+
+      // Tweet text wrap
+      ctx.fillStyle = fg;
+      ctx.font = '15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      wrapText(ctx, text, 20, 95, 510, 22);
+
+      // Stats
+      const statsY = 235;
+      ctx.fillStyle = muted;
+      ctx.font = '13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText(`💬 ${comments}`, 20, statsY);
+      ctx.fillText(`🔁 ${rts}`, 150, statsY);
+      ctx.fillText(`❤️ ${likes}`, 280, statsY);
+
+      // Border
+      ctx.strokeStyle = isDark ? '#38444d' : '#e1e8ed';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0.5, 0.5, 549, 279);
+
+      document.getElementById('downloadTweetBtn').disabled = false;
+      showToast('Tweet generated!');
+    });
+
+    document.getElementById('downloadTweetBtn')?.addEventListener('click', () => {
+      const canvas = document.getElementById('tweetCanvas');
+      if (!canvas) return;
+      canvas.toBlob((blob) => downloadBlob(blob, 'tweet.png'), 'image/png');
+    });
+  }
+
+  // YouTube Tags
+  if (toolId === 'youtube-tags') {
+    document.getElementById('extractBtn')?.addEventListener('click', async () => {
+      const url = document.getElementById('ytTagUrl')?.value.trim();
+      if (!url) { showToast('Please enter a URL', 'error'); return; }
+      const videoId = extractYTId(url);
+      if (!videoId) { showToast('Invalid YouTube URL', 'error'); return; }
+
+      const output = document.getElementById('tagsOutput');
+      const result = document.getElementById('resultArea');
+      if (output && result) {
+        result.classList.add('visible');
+        // Note: direct API requires key. Using noembed for basic info
+        output.innerHTML = `
+          <div style="padding:1rem;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
+            <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:.75rem">
+              ⓘ Due to YouTube's API restrictions, tag extraction requires a YouTube Data API key.
+              However, here's the video info for <strong>${videoId}</strong>:
+            </p>
+            <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+              <img src="https://img.youtube.com/vi/${videoId}/mqdefault.jpg" style="border-radius:8px;max-width:180px" />
+              <div>
+                <p style="font-size:.9rem;font-weight:600">Video ID: ${videoId}</p>
+                <a href="https://www.youtube.com/watch?v=${videoId}" target="_blank" style="color:var(--primary);font-size:.85rem">Open on YouTube →</a>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    });
+  }
+
+  // Instagram Post
+  if (toolId === 'instagram-post') {
+    document.getElementById('generateBtn')?.addEventListener('click', () => {
+      const canvas = document.getElementById('igCanvas');
+      const preview = document.getElementById('previewArea');
+      if (!canvas || !preview) return;
+      preview.style.display = '';
+
+      const user = document.getElementById('igUser')?.value || 'user';
+      const likes = document.getElementById('igLikes')?.value || '0';
+      const caption = document.getElementById('igCaption')?.value || '';
+      const bgColor = document.getElementById('igBgColor')?.value || '#f5f5f5';
+
+      canvas.width = 400;
+      canvas.height = 500;
+      const ctx = canvas.getContext('2d');
+
+      // Background
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, 400, 500);
+
+      // Header
+      ctx.fillStyle = '#fafafa';
+      ctx.fillRect(0, 0, 400, 50);
+      ctx.fillStyle = '#262626';
+      ctx.font = 'bold 14px -apple-system, sans-serif';
+      ctx.fillText(user, 50, 30);
+
+      // Avatar
+      ctx.fillStyle = '#c13584';
+      ctx.beginPath(); ctx.arc(24, 25, 16, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(user[0]?.toUpperCase() || 'U', 24, 30);
+      ctx.textAlign = 'left';
+
+      // Image area
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 50, 400, 300);
+
+      // Gradient overlay text
+      ctx.fillStyle = '#262626';
+      ctx.font = '22px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('📷', 200, 210);
+      ctx.textAlign = 'left';
+
+      // Action icons
+      const iconsY = 365;
+      ctx.font = '20px sans-serif';
+      ctx.fillText('♡', 14, iconsY);
+      ctx.fillText('💬', 44, iconsY);
+      ctx.fillText('📤', 74, iconsY);
+
+      // Likes
+      ctx.fillStyle = '#262626';
+      ctx.font = 'bold 13px -apple-system, sans-serif';
+      ctx.fillText(`${likes} likes`, 14, iconsY + 22);
+
+      // Caption
+      ctx.font = '13px -apple-system, sans-serif';
+      ctx.fillStyle = '#262626';
+      wrapText(ctx, `${user}  ${caption}`, 14, iconsY + 42, 370, 18);
+
+      document.getElementById('downloadBtn').disabled = false;
+      showToast('Instagram post generated!');
+    });
+
+    document.getElementById('downloadBtn')?.addEventListener('click', () => {
+      const canvas = document.getElementById('igCanvas');
+      if (!canvas) return;
+      canvas.toBlob(blob => downloadBlob(blob, 'instagram-post.png'), 'image/png');
+    });
+  }
+
+  // X Image Slicer
+  if (toolId === 'x-image-slicer') {
+    let currentFile = null;
+    let currentDataURL = null;
+
+    const zone = document.getElementById('xSlicer');
+    const input = document.getElementById('xSlicerInput');
+    if (zone && input) {
+      ['dragover', 'dragenter'].forEach(e => zone.addEventListener(e, (ev) => { ev.preventDefault(); zone.classList.add('drag-over'); }));
+      ['dragleave', 'drop'].forEach(e => zone.addEventListener(e, () => zone.classList.remove('drag-over')));
+
+      const handleFile = (files) => {
+        currentFile = files[0];
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          currentDataURL = e.target.result;
+          document.getElementById('sliceBtn').disabled = false;
+          const infoArea = document.getElementById('fileInfoArea');
+          if (infoArea) {
+            infoArea.innerHTML = `
+              <div class="file-info">
+                <div class="file-info-icon">📄</div>
+                <div class="file-info-details">
+                  <div class="file-info-name">${currentFile.name}</div>
+                  <div class="file-info-size">${formatBytes(currentFile.size)}</div>
+                </div>
+              </div>`;
+          }
+        };
+        reader.readAsDataURL(currentFile);
+      };
+
+      zone.addEventListener('drop', (e) => { e.preventDefault(); if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files); });
+      input.addEventListener('change', () => { if (input.files.length) handleFile(input.files); });
+    }
+
+    document.getElementById('sliceBtn')?.addEventListener('click', async () => {
+      if (!currentDataURL) return;
+      const layout = document.getElementById('gridLayout')?.value || '2x2';
+      const [cols, rows] = layout.split('x').map(Number);
+
+      const img = await loadImage(currentDataURL);
+      const sliceW = Math.floor(img.width / cols);
+      const sliceH = Math.floor(img.height / rows);
+
+      const grid = document.getElementById('sliceGrid');
+      const preview = document.getElementById('previewArea');
+      if (grid && preview) {
+        preview.style.display = '';
+        grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        grid.innerHTML = '';
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const canvas = document.createElement('canvas');
+            canvas.width = sliceW; canvas.height = sliceH;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, c * sliceW, r * sliceH, sliceW, sliceH, 0, 0, sliceW, sliceH);
+            canvas.style.width = '100%'; canvas.style.borderRadius = '8px';
+            grid.appendChild(canvas);
+
+            // Auto download
+            canvas.toBlob((blob) => {
+              downloadBlob(blob, `slice-${r + 1}-${c + 1}.png`);
+            }, 'image/png');
+          }
+        }
+      }
+      showToast(`Sliced into ${cols * rows} parts!`);
+    });
+  }
+}
+
+function extractYTId(url) {
+  const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = text.split(' ');
+  let line = '';
+  for (const word of words) {
+    const test = line + word + ' ';
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line.trim(), x, y);
+      line = word + ' ';
+      y += lineHeight;
+    } else {
+      line = test;
+    }
+  }
+  ctx.fillText(line.trim(), x, y);
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
