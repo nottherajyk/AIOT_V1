@@ -47,6 +47,4 @@ A comprehensive and modern web application that provides a wide range of utility
 
 All processing happens locally in your browser. No files are ever uploaded to any server.
 
-## 📄 License
 
-MIT
