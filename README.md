@@ -1,6 +1,6 @@
-# AIOT - All-In-One Tools 🛠️
+# SnapTools — All-in-One Online Tools 🛠️
 
-A comprehensive and modern web application that provides a wide range of utility tools under one roof. Designed for speed, privacy, and ease of use.
+A modern, privacy-first web application that provides a wide range of utility tools under one roof. Designed for speed, privacy, and ease of use.
 
 ## ✨ Features
 
