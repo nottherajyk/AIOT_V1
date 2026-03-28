@@ -1,4 +1,5 @@
 import { PDFDocument } from 'pdf-lib';
+import { encryptPDF } from '@pdfsmaller/pdf-encrypt-lite';
 import { jsPDF } from 'jspdf';
 import { formatBytes, downloadBlob, readFileAsArrayBuffer, renderDropZone, renderMultiDropZone } from '../utils.js';
 import { showToast } from '../components/toast.js';
@@ -199,17 +200,34 @@ function setupPdfTool(toolId) {
     document.getElementById('protectBtn')?.addEventListener('click', async () => {
       const pw = document.getElementById('pdfPassword')?.value;
       const pwc = document.getElementById('pdfPasswordConfirm')?.value;
-      if (!pw || pw !== pwc) { showToast('Passwords do not match', 'error'); return; }
+      if (!pw) { showToast('Please enter a password', 'error'); return; }
+      if (pw !== pwc) { showToast('Passwords do not match', 'error'); return; }
+      
       try {
+        const protectBtn = document.getElementById('protectBtn');
+        protectBtn.disabled = true;
+        protectBtn.innerHTML = '<span class="spinner-sm"></span> Protecting...';
+        
         const buffer = await readFileAsArrayBuffer(currentFiles[0]);
-        const pdf = await PDFDocument.load(buffer);
-        // pdf-lib doesn't support encryption natively — we'll show a note
-        showToast('Note: Browser-side PDF encryption has limited support. For full encryption use a desktop tool.', 'info');
-        const bytes = await pdf.save();
-        const blob = new Blob([bytes], { type: 'application/pdf' });
+        // Use the encrypt-lite library for actual password protection
+        const encryptedBytes = await encryptPDF(new Uint8Array(buffer), pw);
+        
+        const blob = new Blob([encryptedBytes], { type: 'application/pdf' });
         downloadBlob(blob, currentFiles[0].name.replace('.pdf', '-protected.pdf'));
+        
+        showToast('PDF protected successfully!', 'success');
+        
+        const resultArea = document.getElementById('resultArea');
+        if (resultArea) {
+          resultArea.classList.add('visible');
+          document.getElementById('resultMeta').innerHTML = `<span>🔒 Protected with password</span><span>📁 Size: ${formatBytes(blob.size)}</span>`;
+        }
       } catch (e) {
         showToast('Error: ' + e.message, 'error');
+      } finally {
+        const protectBtn = document.getElementById('protectBtn');
+        protectBtn.disabled = false;
+        protectBtn.innerHTML = '🔒 Protect & Download';
       }
     });
   }
