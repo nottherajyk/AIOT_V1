@@ -12,6 +12,7 @@ export function socialToolHandler(tool) {
     case 'instagram-post': return renderInstagramPost();
     case 'x-image-slicer': return renderXImageSlicer();
     case 'instagram-downloader': return renderInstagramDownloader();
+    case 'youtube-downloader': return renderYouTubeDownloader();
     default: return `<p>Tool coming soon!</p>`;
   }
 }
@@ -171,6 +172,27 @@ function renderInstagramDownloader() {
   `;
 }
 
+function renderYouTubeDownloader() {
+  return `
+    <div class="form-group">
+      <label class="form-label">YouTube Video URL</label>
+      <input type="text" class="form-input" id="ytVidUrl" placeholder="https://www.youtube.com/watch?v=..." />
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-primary" id="ytFetchBtn">📥 Fetch Video</button>
+    </div>
+    <div class="result-area" id="resultArea">
+      <div id="ytLoading" style="display:none;text-align:center;padding:2rem">
+        <div class="spinner-sm" style="width:28px;height:28px;border-width:3px;margin:0 auto 1rem"></div>
+        <p style="color:var(--text-muted);font-size:.9rem">Fetching video streams...</p>
+      </div>
+      <div id="ytResult"></div>
+    </div>
+    <div style="margin-top:1rem;padding:1rem;background:var(--surface);border-radius:12px;border:1px solid var(--border)">
+      <p style="font-size:.8rem;color:var(--text-muted)">💡 <strong>Note:</strong> High-resolution videos (1080p+) are often split into separate streams by YouTube. Only fully mixed formats (usually up to 720p) and standard audio formats are shown here.</p>
+    </div>
+  `;
+}
 
 // ===== SETUP LOGIC =====
 function setupSocialTool(toolId) {
@@ -546,6 +568,99 @@ function setupSocialTool(toolId) {
         showToast('Error: ' + e.message, 'error');
       } finally {
         if (fetchBtn) { fetchBtn.disabled = false; fetchBtn.innerHTML = '📥 Fetch Post'; }
+      }
+    });
+  }
+
+  // YouTube Downloader
+  if (toolId === 'youtube-downloader') {
+    document.getElementById('ytFetchBtn')?.addEventListener('click', async () => {
+      const url = document.getElementById('ytVidUrl')?.value.trim();
+      if (!url) { showToast('Please enter a YouTube URL', 'error'); return; }
+
+      const videoId = extractYTId(url);
+      if (!videoId) { showToast('Invalid YouTube URL', 'error'); return; }
+
+      const loading = document.getElementById('ytLoading');
+      const result = document.getElementById('ytResult');
+      const resultArea = document.getElementById('resultArea');
+      const fetchBtn = document.getElementById('ytFetchBtn');
+
+      if (loading) loading.style.display = '';
+      if (result) result.innerHTML = '';
+      if (resultArea) resultArea.classList.add('visible');
+      if (fetchBtn) { fetchBtn.disabled = true; fetchBtn.innerHTML = '<span class="spinner-sm"></span> Fetching...'; }
+
+      try {
+        const resp = await fetch(`/api/youtube-info?url=${encodeURIComponent(url)}`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to fetch video info');
+
+        if (loading) loading.style.display = 'none';
+        
+        // Build video options
+        const vidHtml = (data.videos || []).map(v => `
+          <a href="/api/youtube-download?url=${encodeURIComponent(url)}&itag=${v.itag}&title=${encodeURIComponent(data.title)}" 
+             class="btn btn-primary" 
+             style="display:flex;flex-direction:column;align-items:center;padding:0.75rem;font-size:0.8rem;text-decoration:none">
+            <span style="font-size:1rem;font-weight:600;margin-bottom:0.15rem">${v.quality}</span>
+            <span style="opacity:0.8;font-size:0.75rem">MP4</span>
+          </a>
+        `).join('');
+
+        // Build audio options
+        const audHtml = (data.audios || []).map(a => `
+          <a href="/api/youtube-download?url=${encodeURIComponent(url)}&itag=${a.itag}&title=${encodeURIComponent(data.title)}" 
+             class="btn btn-secondary" 
+             style="display:flex;flex-direction:column;align-items:center;padding:0.75rem;font-size:0.8rem;background:var(--surface);text-decoration:none">
+            <span style="font-size:1rem;font-weight:600;margin-bottom:0.15rem">${a.audioBitrate || '128'} kbps</span>
+            <span style="opacity:0.8;font-size:0.75rem">Audio</span>
+          </a>
+        `).join('');
+
+        if (result) {
+          result.innerHTML = `
+            <div style="max-width:600px;margin:0 auto">
+              <div style="background:var(--surface);border-radius:12px;overflow:hidden;border:1px solid var(--border);display:flex;flex-direction:column;gap:1.5rem;padding-bottom:1.5rem">
+                <div>
+                  <img src="${data.thumbnail}" alt="Thumbnail" style="width:100%;display:block;max-height:300px;object-fit:cover;border-bottom:1px solid var(--border)" onerror="this.style.display='none'"/>
+                  <div style="padding:1.5rem 1rem 0 1rem;text-align:center">
+                    <h3 style="margin:0;font-size:1.1rem;color:var(--text)">${data.title}</h3>
+                  </div>
+                </div>
+                
+                <div style="padding:0 1rem;">
+                  <h4 style="margin:0 0 0.75rem 0;font-size:0.9rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">Video & Audio (MP4)</h4>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:0.75rem">
+                    ${vidHtml || '<p style="font-size:0.85rem;color:var(--text-muted);grid-column:1/-1">No mixed video streams available</p>'}
+                  </div>
+                </div>
+
+                <div style="padding:0 1rem;">
+                  <h4 style="margin:0 0 0.75rem 0;font-size:0.9rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">Audio Only</h4>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:0.75rem">
+                    ${audHtml || '<p style="font-size:0.85rem;color:var(--text-muted);grid-column:1/-1">No audio streams available</p>'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+        showToast('Video options loaded!');
+      } catch(e) {
+        if (loading) loading.style.display = 'none';
+        if (result) {
+          result.innerHTML = `
+            <div style="padding:1.5rem;text-align:center;color:var(--text-muted);background:var(--surface);border-radius:12px;border:1px solid rgba(239,68,68,0.3)">
+              <p style="font-size:2rem;margin-bottom:.5rem">⚠️</p>
+              <p style="font-size:.9rem;font-weight:500">${e.message}</p>
+              <p style="font-size:.8rem;margin-top:.5rem">Please ensure the video is public and accessible.</p>
+            </div>
+          `;
+        }
+        showToast('Error: ' + e.message, 'error');
+      } finally {
+        if (fetchBtn) { fetchBtn.disabled = false; fetchBtn.innerHTML = '📥 Fetch Video'; }
       }
     });
   }
