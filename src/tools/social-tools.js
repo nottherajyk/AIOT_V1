@@ -491,16 +491,7 @@ function setupSocialTool(toolId) {
       if (fetchBtn) { fetchBtn.disabled = true; fetchBtn.innerHTML = '<span class="spinner-sm"></span> Fetching...'; }
 
       try {
-        const igEmbedUrl = `https://www.instagram.com/p/${shortcode}/embed/`;
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(igEmbedUrl)}`;
-
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error('Failed to fetch post data');
-        const data = await response.json();
-        const html = data.contents;
-
-        // Extract image URLs from the embed HTML
-        const imageUrls = extractImagesFromEmbed(html);
+        const imageUrls = await fetchInstagramImages(shortcode);
 
         if (imageUrls.length === 0) {
           throw new Error('No images found. The post may be private or the URL may be incorrect.');
@@ -515,9 +506,9 @@ function setupSocialTool(toolId) {
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem">
               ${imageUrls.map((imgUrl, i) => `
                 <div style="background:var(--surface);border-radius:12px;overflow:hidden;border:1px solid var(--border)">
-                  <img src="${imgUrl}" alt="Instagram post image ${i + 1}" style="width:100%;display:block;aspect-ratio:1;object-fit:cover" crossorigin="anonymous" />
+                  <img src="${imgUrl}" alt="Instagram post image ${i + 1}" style="width:100%;display:block;aspect-ratio:1;object-fit:cover" referrerpolicy="no-referrer" />
                   <div style="padding:.75rem;display:flex;gap:.5rem;flex-wrap:wrap">
-                    <a href="${imgUrl}" download="instagram-${shortcode}-${i + 1}.jpg" target="_blank" class="btn btn-primary" style="font-size:.8rem;padding:.4rem .75rem;flex:1;text-align:center">📥 Download</a>
+                    <button class="btn btn-primary ig-download-btn" data-url="${imgUrl}" data-name="instagram-${shortcode}-${i + 1}.jpg" style="font-size:.8rem;padding:.4rem .75rem;flex:1;text-align:center">📥 Download</button>
                     <button class="btn btn-secondary ig-open-btn" data-url="${imgUrl}" style="font-size:.8rem;padding:.4rem .75rem">🔗 Open</button>
                   </div>
                 </div>
@@ -525,9 +516,22 @@ function setupSocialTool(toolId) {
             </div>
           `;
 
-          // Bind open-in-new-tab buttons
+          // Bind open buttons
           result.querySelectorAll('.ig-open-btn').forEach(btn => {
             btn.addEventListener('click', () => window.open(btn.dataset.url, '_blank'));
+          });
+          // Bind download buttons
+          result.querySelectorAll('.ig-download-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              try {
+                const proxy = `https://corsproxy.io/?${encodeURIComponent(btn.dataset.url)}`;
+                const resp = await fetch(proxy);
+                const blob = await resp.blob();
+                downloadBlob(blob, btn.dataset.name);
+              } catch {
+                window.open(btn.dataset.url, '_blank');
+              }
+            });
           });
         }
         showToast(`Found ${imageUrls.length} image${imageUrls.length > 1 ? 's' : ''}!`);
@@ -586,25 +590,80 @@ function extractIGShortcode(url) {
   return match ? match[1] : null;
 }
 
+async function fetchInstagramImages(shortcode) {
+  const igEmbedUrl = `https://www.instagram.com/p/${shortcode}/embed/captioned/`;
+  const igPageUrl = `https://www.instagram.com/p/${shortcode}/`;
+
+  // Try multiple CORS proxies in order
+  const proxyStrategies = [
+    { name: 'corsproxy', buildUrl: (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`, parse: 'text' },
+    { name: 'allorigins', buildUrl: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, parse: 'text' },
+    { name: 'codetabs', buildUrl: (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`, parse: 'text' },
+  ];
+
+  // Try embed URL with each proxy, then page URL
+  const urlsToTry = [igEmbedUrl, igPageUrl];
+
+  for (const targetUrl of urlsToTry) {
+    for (const proxy of proxyStrategies) {
+      try {
+        const fetchUrl = proxy.buildUrl(targetUrl);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(fetchUrl, { 
+          signal: controller.signal,
+          headers: { 'Accept': 'text/html,application/json' }
+        });
+        clearTimeout(timeout);
+        
+        if (!response.ok) continue;
+        
+        const html = await response.text();
+        if (!html || html.length < 100) continue;
+
+        const imageUrls = extractImagesFromEmbed(html);
+        if (imageUrls.length > 0) return imageUrls;
+      } catch {
+        // Try next proxy
+        continue;
+      }
+    }
+  }
+
+  return [];
+}
+
 function extractImagesFromEmbed(html) {
   const urls = new Set();
 
-  // Match image URLs from srcset, src, and display_url patterns
+  // Decode unicode escapes first
+  const decoded = html.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+
+  // Match image URLs from various patterns in Instagram embed/page HTML
   const patterns = [
     /class="EmbeddedMediaImage"[^>]*src="([^"]+)"/gi,
-    /property="og:image"\s+content="([^"]+)"/gi,
-    /<img[^>]*class="[^"]*"[^>]*src="(https:\/\/[^"]*instagram[^"]*\/[^"]*\.jpg[^"]*)"/gi,
-    /<img[^>]*src="(https:\/\/(?:scontent|instagram)[^"]+\.jpg[^"]*)"/gi,
+    /property="og:image"\s*content="([^"]+)"/gi,
+    /<img[^>]*src="(https:\/\/(?:scontent[^"]*|instagram[^"]*)\.(jpg|png|webp)[^"]*)"/gi,
     /"display_url"\s*:\s*"([^"]+)"/gi,
-    /"src"\s*:\s*"(https:\/\/(?:scontent|instagram)[^"]+)"/gi,
+    /"display_src"\s*:\s*"([^"]+)"/gi,
+    /"image_versions2"[^}]*"url"\s*:\s*"([^"]+)"/gi,
+    /src="(https:\/\/scontent[^"]+)"/gi,
+    /"thumbnail_src"\s*:\s*"([^"]+)"/gi,
   ];
 
-  for (const pattern of patterns) {
-    let m;
-    while ((m = pattern.exec(html)) !== null) {
-      let imgUrl = m[1].replace(/\\u0026/g, '&').replace(/&amp;/g, '&');
-      if (imgUrl.includes('instagram') || imgUrl.includes('scontent') || imgUrl.includes('cdninstagram')) {
-        urls.add(imgUrl);
+  for (const source of [html, decoded]) {
+    for (const pattern of patterns) {
+      pattern.lastIndex = 0; // Reset regex state
+      let m;
+      while ((m = pattern.exec(source)) !== null) {
+        let imgUrl = m[1]
+          .replace(/\\u0026/g, '&')
+          .replace(/&amp;/g, '&')
+          .replace(/\\\//g, '/');
+        if (imgUrl.includes('scontent') || imgUrl.includes('cdninstagram') || imgUrl.includes('fbcdn')) {
+          urls.add(imgUrl);
+        }
       }
     }
   }
