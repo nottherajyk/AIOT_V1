@@ -1,6 +1,6 @@
-import ytdl from '@distube/ytdl-core';
+import play from 'play-dl';
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   const { url, itag, title } = req.query;
 
   if (!url || !itag) {
@@ -8,18 +8,21 @@ export default function handler(req, res) {
   }
 
   const cleanTitle = (title || 'video').replace(/[^a-zA-Z0-9 -]/g, '');
-  const ext = parseInt(itag) > 130 ? 'm4a' : 'mp4'; // roughly, audio-only itags are often m4a
+  const ext = parseInt(itag) > 130 ? 'm4a' : 'mp4'; 
   const filename = `${cleanTitle}.${ext}`;
 
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Content-Type', ext === 'm4a' ? 'audio/mp4' : 'video/mp4');
 
   try {
-    ytdl(url, { filter: format => format.itag == itag })
+    const streamInfo = await play.stream(url, { quality: parseInt(itag) });
+    res.setHeader('Content-Length', streamInfo.content_length);
+    
+    streamInfo.stream
       .on('error', (err) => {
-        console.error('YTDL Error:', err);
+        console.error('Play-dl Error:', err);
         if (!res.headersSent) {
-          res.status(500).json({ error: 'Failed to download video.' });
+          res.status(500).json({ error: 'Stream error.' });
         } else {
           res.end();
         }

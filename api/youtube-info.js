@@ -1,4 +1,4 @@
-import ytdl from '@distube/ytdl-core';
+import play from 'play-dl';
 
 export default async function handler(req, res) {
   const { url } = req.query;
@@ -8,27 +8,26 @@ export default async function handler(req, res) {
   }
 
   try {
-    const info = await ytdl.getInfo(url);
-    const title = info.videoDetails.title;
-    const thumbnail = info.videoDetails.thumbnails.pop()?.url || '';
+    const info = await play.video_info(url);
+    const title = info.video_details.title;
+    const thumbnail = info.video_details.thumbnails.pop()?.url || '';
 
     // Muxed videos (Video + Audio)
-    const videoFormats = ytdl.filterFormats(info.formats, 'videoandaudio');
+    const videoFormats = info.format.filter(f => f.qualityLabel && f.audioQuality);
     const videos = videoFormats.map(f => ({
       itag: f.itag,
-      quality: f.qualityLabel || f.resolution,
+      quality: f.qualityLabel,
       url: f.url,
-      container: f.container,
-      hasAudio: f.hasAudio
+      container: f.container || f.mimeType?.split(';')[0]?.split('/')[1] || 'mp4'
     }));
 
     // Audio only streams
-    const audioFormats = ytdl.filterFormats(info.formats, 'audioonly');
+    const audioFormats = info.format.filter(f => !f.qualityLabel && f.audioQuality);
     const audios = audioFormats.map(f => ({
       itag: f.itag,
-      audioBitrate: f.audioBitrate,
+      audioBitrate: Math.round(f.bitrate ? f.bitrate / 1000 : 128),
       url: f.url,
-      container: f.container
+      container: f.container || f.mimeType?.split(';')[0]?.split('/')[1] || 'm4a'
     }));
 
     res.status(200).json({ title, thumbnail, videos, audios });
