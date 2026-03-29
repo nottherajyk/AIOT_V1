@@ -27,7 +27,8 @@ export const tools = [
   { id:'tweet-generator', name:'Tweet Generator', desc:'Easily generate believable fake tweets and download them as images.', category:'social', icon:'🐦' },
   { id:'youtube-tags', name:'YouTube Tags Extractor', desc:'Extract tags from a YouTube video.', category:'social', icon:'🏷️' },
   { id:'instagram-post', name:'Instagram Post Generator', desc:'Generate Instagram-style posts and download as images.', category:'social', icon:'📸' },
-  { id:'x-image-slicer', name:'X Image Slicer', desc:'Slice your image into multiple parts tailored for X.com posts.', category:'social', icon:'✂️', badge:'NEW' },
+  { id:'x-image-slicer', name:'X Image Slicer', desc:'Slice your image into multiple parts tailored for X.com posts.', category:'social', icon:'✂️' },
+  { id:'instagram-downloader', name:'Instagram Post Downloader', desc:'Easily download any post images from Instagram.', category:'social', icon:'📥', badge:'NEW' },
 
   // ===== TEXT & LISTS TOOLS =====
   { id:'character-counter', name:'Character Counter', desc:'Easily count the number of characters in a text.', category:'text', icon:'🔢' },

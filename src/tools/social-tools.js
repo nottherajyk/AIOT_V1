@@ -11,6 +11,7 @@ export function socialToolHandler(tool) {
     case 'youtube-tags': return renderYouTubeTags();
     case 'instagram-post': return renderInstagramPost();
     case 'x-image-slicer': return renderXImageSlicer();
+    case 'instagram-downloader': return renderInstagramDownloader();
     default: return `<p>Tool coming soon!</p>`;
   }
 }
@@ -144,6 +145,28 @@ function renderXImageSlicer() {
     <div class="preview-area" id="previewArea" style="display:none">
       <h3>Preview</h3>
       <div id="sliceGrid" style="display:grid;gap:4px"></div>
+    </div>
+  `;
+}
+
+function renderInstagramDownloader() {
+  return `
+    <div class="form-group">
+      <label class="form-label">Instagram Post URL</label>
+      <input type="text" class="form-input" id="igUrl" placeholder="https://www.instagram.com/p/ABC123/" />
+    </div>
+    <div class="actions-row">
+      <button class="btn btn-primary" id="igFetchBtn">📥 Fetch Post</button>
+    </div>
+    <div class="result-area" id="resultArea">
+      <div id="igLoading" style="display:none;text-align:center;padding:2rem">
+        <div class="spinner-sm" style="width:28px;height:28px;border-width:3px;margin:0 auto 1rem"></div>
+        <p style="color:var(--text-muted);font-size:.9rem">Fetching post data...</p>
+      </div>
+      <div id="igResult"></div>
+    </div>
+    <div style="margin-top:1rem;padding:1rem;background:var(--surface);border-radius:12px;border:1px solid var(--border)">
+      <p style="font-size:.8rem;color:var(--text-muted)">💡 <strong>How to use:</strong> Paste the full Instagram post URL (e.g. https://www.instagram.com/p/ABC123/) and click Fetch Post. The image will appear below for you to download.</p>
     </div>
   `;
 }
@@ -447,6 +470,84 @@ function setupSocialTool(toolId) {
       showToast(`Sliced into ${cols * rows} parts!`);
     });
   }
+
+  // Instagram Post Downloader
+  if (toolId === 'instagram-downloader') {
+    document.getElementById('igFetchBtn')?.addEventListener('click', async () => {
+      const url = document.getElementById('igUrl')?.value.trim();
+      if (!url) { showToast('Please enter an Instagram URL', 'error'); return; }
+
+      const shortcode = extractIGShortcode(url);
+      if (!shortcode) { showToast('Invalid Instagram URL. Use format: instagram.com/p/SHORTCODE/', 'error'); return; }
+
+      const loading = document.getElementById('igLoading');
+      const result = document.getElementById('igResult');
+      const resultArea = document.getElementById('resultArea');
+      const fetchBtn = document.getElementById('igFetchBtn');
+
+      if (loading) loading.style.display = '';
+      if (result) result.innerHTML = '';
+      if (resultArea) resultArea.classList.add('visible');
+      if (fetchBtn) { fetchBtn.disabled = true; fetchBtn.innerHTML = '<span class="spinner-sm"></span> Fetching...'; }
+
+      try {
+        const igEmbedUrl = `https://www.instagram.com/p/${shortcode}/embed/`;
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(igEmbedUrl)}`;
+
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error('Failed to fetch post data');
+        const data = await response.json();
+        const html = data.contents;
+
+        // Extract image URLs from the embed HTML
+        const imageUrls = extractImagesFromEmbed(html);
+
+        if (imageUrls.length === 0) {
+          throw new Error('No images found. The post may be private or the URL may be incorrect.');
+        }
+
+        if (loading) loading.style.display = 'none';
+        if (result) {
+          result.innerHTML = `
+            <div style="margin-bottom:1rem">
+              <span style="font-size:.9rem;font-weight:600;color:var(--text)">Found ${imageUrls.length} image${imageUrls.length > 1 ? 's' : ''}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem">
+              ${imageUrls.map((imgUrl, i) => `
+                <div style="background:var(--surface);border-radius:12px;overflow:hidden;border:1px solid var(--border)">
+                  <img src="${imgUrl}" alt="Instagram post image ${i + 1}" style="width:100%;display:block;aspect-ratio:1;object-fit:cover" crossorigin="anonymous" />
+                  <div style="padding:.75rem;display:flex;gap:.5rem;flex-wrap:wrap">
+                    <a href="${imgUrl}" download="instagram-${shortcode}-${i + 1}.jpg" target="_blank" class="btn btn-primary" style="font-size:.8rem;padding:.4rem .75rem;flex:1;text-align:center">📥 Download</a>
+                    <button class="btn btn-secondary ig-open-btn" data-url="${imgUrl}" style="font-size:.8rem;padding:.4rem .75rem">🔗 Open</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+
+          // Bind open-in-new-tab buttons
+          result.querySelectorAll('.ig-open-btn').forEach(btn => {
+            btn.addEventListener('click', () => window.open(btn.dataset.url, '_blank'));
+          });
+        }
+        showToast(`Found ${imageUrls.length} image${imageUrls.length > 1 ? 's' : ''}!`);
+      } catch (e) {
+        if (loading) loading.style.display = 'none';
+        if (result) {
+          result.innerHTML = `
+            <div style="padding:1.5rem;text-align:center;color:var(--text-muted)">
+              <p style="font-size:2rem;margin-bottom:.5rem">😔</p>
+              <p style="font-size:.9rem;font-weight:500">${e.message}</p>
+              <p style="font-size:.8rem;margin-top:.5rem">Make sure the post is public and the URL is correct.</p>
+            </div>
+          `;
+        }
+        showToast('Error: ' + e.message, 'error');
+      } finally {
+        if (fetchBtn) { fetchBtn.disabled = false; fetchBtn.innerHTML = '📥 Fetch Post'; }
+      }
+    });
+  }
 }
 
 function extractYTId(url) {
@@ -477,4 +578,36 @@ function loadImage(src) {
     img.onerror = reject;
     img.src = src;
   });
+}
+
+function extractIGShortcode(url) {
+  // Matches: instagram.com/p/SHORTCODE/ or /reel/SHORTCODE/
+  const match = url.match(/instagram\.com\/(?:p|reel)\/([A-Za-z0-9_-]+)/);
+  return match ? match[1] : null;
+}
+
+function extractImagesFromEmbed(html) {
+  const urls = new Set();
+
+  // Match image URLs from srcset, src, and display_url patterns
+  const patterns = [
+    /class="EmbeddedMediaImage"[^>]*src="([^"]+)"/gi,
+    /property="og:image"\s+content="([^"]+)"/gi,
+    /<img[^>]*class="[^"]*"[^>]*src="(https:\/\/[^"]*instagram[^"]*\/[^"]*\.jpg[^"]*)"/gi,
+    /<img[^>]*src="(https:\/\/(?:scontent|instagram)[^"]+\.jpg[^"]*)"/gi,
+    /"display_url"\s*:\s*"([^"]+)"/gi,
+    /"src"\s*:\s*"(https:\/\/(?:scontent|instagram)[^"]+)"/gi,
+  ];
+
+  for (const pattern of patterns) {
+    let m;
+    while ((m = pattern.exec(html)) !== null) {
+      let imgUrl = m[1].replace(/\\u0026/g, '&').replace(/&amp;/g, '&');
+      if (imgUrl.includes('instagram') || imgUrl.includes('scontent') || imgUrl.includes('cdninstagram')) {
+        urls.add(imgUrl);
+      }
+    }
+  }
+
+  return Array.from(urls);
 }

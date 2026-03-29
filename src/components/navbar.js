@@ -5,7 +5,7 @@ export function renderNavbar() {
   const isHome = route === '/' || route === '';
   const isImage = route.startsWith('/tool/') && ['webp-to-jpg','jpg-to-svg','base64-to-image','compress-image','png-to-jpg','svg-to-png','png-to-svg','image-cropper','invert-colors','jpg-to-png','image-to-base64','black-and-white'].includes(route.replace('/tool/',''));
   const isPdf = route.startsWith('/tool/') && ['protect-pdf','unlock-pdf','pdf-metadata','jpg-to-pdf','merge-pdf','split-pdf'].includes(route.replace('/tool/',''));
-  const isSocial = route.startsWith('/tool/') && ['thumbnail-grabber','tweet-generator','youtube-tags','instagram-post','x-image-slicer'].includes(route.replace('/tool/',''));
+  const isSocial = route.startsWith('/tool/') && ['thumbnail-grabber','tweet-generator','youtube-tags','instagram-post','x-image-slicer','instagram-downloader'].includes(route.replace('/tool/',''));
   const isText = route.startsWith('/tool/') && !isImage && !isPdf && !isSocial && route.startsWith('/tool/');
 
   return `
