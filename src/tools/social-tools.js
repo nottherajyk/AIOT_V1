@@ -592,59 +592,139 @@ function setupSocialTool(toolId) {
       if (fetchBtn) { fetchBtn.disabled = true; fetchBtn.innerHTML = '<span class="spinner-sm"></span> Fetching...'; }
 
       try {
-        const resp = await fetch(`/api/youtube-info?url=${encodeURIComponent(url)}`);
+        // Fetch Title & Thumbnail using Noembed (bypasses CORS & Bot checks!)
+        const noembedUrl = `https://noembed.com/embed?url=${encodeURIComponent(url)}`;
+        const resp = await fetch(noembedUrl);
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Failed to fetch video info');
+        
+        if (data.error) throw new Error("Video not found or is private.");
 
         if (loading) loading.style.display = 'none';
         
-        // Build video options
-        const vidHtml = (data.videos || []).map(v => `
-          <a href="/api/youtube-download?url=${encodeURIComponent(url)}&itag=${v.itag}&title=${encodeURIComponent(data.title)}" 
-             class="btn btn-primary" 
-             style="display:flex;flex-direction:column;align-items:center;padding:0.75rem;font-size:0.8rem;text-decoration:none">
-            <span style="font-size:1rem;font-weight:600;margin-bottom:0.15rem">${v.quality}</span>
+        const hdThumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+        const title = data.title || 'YouTube Video';
+
+        // Render robust qualities
+        const videoQualities = ['1080', '720', '480', '360'];
+        const vidHtml = videoQualities.map(q => `
+          <button class="btn btn-primary yt-dl-btn" data-url="${url}" data-quality="${q}" data-audio="false"
+             style="display:flex;flex-direction:column;align-items:center;padding:0.75rem;font-size:0.8rem;border:none;cursor:pointer">
+            <span style="font-size:1rem;font-weight:600;margin-bottom:0.15rem">${q}p</span>
             <span style="opacity:0.8;font-size:0.75rem">MP4</span>
-          </a>
+          </button>
         `).join('');
 
-        // Build audio options
-        const audHtml = (data.audios || []).map(a => `
-          <a href="/api/youtube-download?url=${encodeURIComponent(url)}&itag=${a.itag}&title=${encodeURIComponent(data.title)}" 
-             class="btn btn-secondary" 
-             style="display:flex;flex-direction:column;align-items:center;padding:0.75rem;font-size:0.8rem;background:var(--surface);text-decoration:none">
-            <span style="font-size:1rem;font-weight:600;margin-bottom:0.15rem">${a.audioBitrate || '128'} kbps</span>
-            <span style="opacity:0.8;font-size:0.75rem">Audio</span>
-          </a>
-        `).join('');
+        const audHtml = `
+          <button class="btn btn-secondary yt-dl-btn" data-url="${url}" data-quality="128" data-audio="true"
+             style="display:flex;flex-direction:column;align-items:center;padding:0.75rem;font-size:0.8rem;background:var(--surface);border:1px solid var(--border);cursor:pointer">
+            <span style="font-size:1rem;font-weight:600;margin-bottom:0.15rem">Standard</span>
+            <span style="opacity:0.8;font-size:0.75rem">MP3</span>
+          </button>
+        `;
 
         if (result) {
           result.innerHTML = `
             <div style="max-width:600px;margin:0 auto">
               <div style="background:var(--surface);border-radius:12px;overflow:hidden;border:1px solid var(--border);display:flex;flex-direction:column;gap:1.5rem;padding-bottom:1.5rem">
                 <div>
-                  <img src="${data.thumbnail}" alt="Thumbnail" style="width:100%;display:block;max-height:300px;object-fit:cover;border-bottom:1px solid var(--border)" onerror="this.style.display='none'"/>
+                  <img src="${hdThumbnail}" alt="Thumbnail" style="width:100%;display:block;max-height:300px;object-fit:cover;border-bottom:1px solid var(--border)" onerror="this.src='${data.thumbnail_url}'"/>
                   <div style="padding:1.5rem 1rem 0 1rem;text-align:center">
-                    <h3 style="margin:0;font-size:1.1rem;color:var(--text)">${data.title}</h3>
+                    <h3 style="margin:0;font-size:1.1rem;color:var(--text)">${title}</h3>
                   </div>
                 </div>
                 
                 <div style="padding:0 1rem;">
-                  <h4 style="margin:0 0 0.75rem 0;font-size:0.9rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">Video & Audio (MP4)</h4>
+                  <h4 style="margin:0 0 0.75rem 0;font-size:0.9rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">Video Downloader (MP4)</h4>
                   <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:0.75rem">
-                    ${vidHtml || '<p style="font-size:0.85rem;color:var(--text-muted);grid-column:1/-1">No mixed video streams available</p>'}
+                    ${vidHtml}
                   </div>
                 </div>
 
                 <div style="padding:0 1rem;">
                   <h4 style="margin:0 0 0.75rem 0;font-size:0.9rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">Audio Only</h4>
                   <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:0.75rem">
-                    ${audHtml || '<p style="font-size:0.85rem;color:var(--text-muted);grid-column:1/-1">No audio streams available</p>'}
+                    ${audHtml}
                   </div>
                 </div>
               </div>
             </div>
           `;
+
+          // Attach listeners for downloading via Cobalt Client API
+          const btns = result.querySelectorAll('.yt-dl-btn');
+          btns.forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+              const b = e.currentTarget;
+              const originalHtml = b.innerHTML;
+              b.innerHTML = '<span class="spinner-sm" style="width:14px;height:14px;border-width:2px;margin-bottom:0.15rem;display:inline-block"></span><span style="opacity:0.8;font-size:0.75rem">Generating...</span>';
+              b.disabled = true;
+
+              try {
+                const targetUrl = b.getAttribute('data-url');
+                const quality = b.getAttribute('data-quality');
+                const isAudio = b.getAttribute('data-audio') === 'true';
+
+                const payload = {
+                  url: targetUrl,
+                  vQuality: quality,
+                  filenamePattern: "classic",
+                  isAudioOnly: isAudio,
+                  isAudioMuted: false,   
+                  disableMetadata: true
+                };
+
+                // Array of robust public cobalt instances (CORS friendly)
+                const cobaltAPIs = [
+                  "https://cobalt.api.timelessnesses.me/api/json",
+                  "https://api.cobalt.buss.lol/api/json",
+                  "https://co.wuk.sh/api/json",
+                  "https://cobalt-api.pewpew.icu/api/json"
+                ];
+
+                let finalUrl = null;
+                for (const api of cobaltAPIs) {
+                  try {
+                    const req = await fetch(api, {
+                      method: 'POST',
+                      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload)
+                    });
+                    const resData = await req.json();
+                    if (resData && (resData.status === 'redirect' || resData.status === 'stream' || resData.status === 'success') && resData.url) {
+                      finalUrl = resData.url;
+                      break;
+                    }
+                  } catch (err) {
+                    console.log("Cobalt instance failed, trying next", api);
+                    continue; 
+                  }
+                }
+
+                if (finalUrl) {
+                  // Trigger browser download
+                  const a = document.createElement('a');
+                  a.href = finalUrl;
+                  a.setAttribute('download', '');
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  
+                  // Reset button after small delay
+                  setTimeout(() => {
+                    b.innerHTML = originalHtml;
+                    b.disabled = false;
+                  }, 2000);
+                  showToast('Download started automatically!');
+                } else {
+                  throw new Error("Unable to generate download link at this time.");
+                }
+              } catch (err) {
+                b.innerHTML = originalHtml;
+                b.disabled = false;
+                showToast(err.message, 'error');
+              }
+            });
+          });
         }
         showToast('Video options loaded!');
       } catch(e) {
@@ -654,7 +734,7 @@ function setupSocialTool(toolId) {
             <div style="padding:1.5rem;text-align:center;color:var(--text-muted);background:var(--surface);border-radius:12px;border:1px solid rgba(239,68,68,0.3)">
               <p style="font-size:2rem;margin-bottom:.5rem">⚠️</p>
               <p style="font-size:.9rem;font-weight:500">${e.message}</p>
-              <p style="font-size:.8rem;margin-top:.5rem">Please ensure the video is public and accessible.</p>
+              <p style="font-size:.8rem;margin-top:.5rem">Make sure the video is public and valid.</p>
             </div>
           `;
         }
