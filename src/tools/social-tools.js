@@ -498,43 +498,62 @@ function setupSocialTool(toolId) {
         }
 
         if (loading) loading.style.display = 'none';
+
+        // Fetch all images as blob URLs for preview
+        const proxyBase = 'https://corsproxy.io/?';
+        const imageBlobs = await Promise.all(
+          imageUrls.map(async (imgUrl) => {
+            try {
+              const resp = await fetch(proxyBase + encodeURIComponent(imgUrl));
+              const blob = await resp.blob();
+              // Force JPEG type if content-type is wrong
+              const jpegBlob = new Blob([blob], { type: 'image/jpeg' });
+              return { blobUrl: URL.createObjectURL(jpegBlob), blob: jpegBlob, original: imgUrl };
+            } catch {
+              return null;
+            }
+          })
+        );
+        const validImages = imageBlobs.filter(Boolean);
+
+        if (validImages.length === 0) {
+          throw new Error('Could not load images. The post may be private.');
+        }
+
         if (result) {
           result.innerHTML = `
             <div style="margin-bottom:1rem">
-              <span style="font-size:.9rem;font-weight:600;color:var(--text)">Found ${imageUrls.length} image${imageUrls.length > 1 ? 's' : ''}</span>
+              <span style="font-size:.9rem;font-weight:600;color:var(--text)">Found ${validImages.length} image${validImages.length > 1 ? 's' : ''}</span>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem">
-              ${imageUrls.map((imgUrl, i) => `
+              ${validImages.map((img, i) => `
                 <div style="background:var(--surface);border-radius:12px;overflow:hidden;border:1px solid var(--border)">
-                  <img src="${imgUrl}" alt="Instagram post image ${i + 1}" style="width:100%;display:block;aspect-ratio:1;object-fit:cover" referrerpolicy="no-referrer" />
+                  <img src="${img.blobUrl}" alt="Instagram post image ${i + 1}" style="width:100%;display:block;aspect-ratio:1;object-fit:cover" />
                   <div style="padding:.75rem;display:flex;gap:.5rem;flex-wrap:wrap">
-                    <button class="btn btn-primary ig-download-btn" data-url="${imgUrl}" data-name="instagram-${shortcode}-${i + 1}.jpg" style="font-size:.8rem;padding:.4rem .75rem;flex:1;text-align:center">📥 Download</button>
-                    <button class="btn btn-secondary ig-open-btn" data-url="${imgUrl}" style="font-size:.8rem;padding:.4rem .75rem">🔗 Open</button>
+                    <button class="btn btn-primary ig-download-btn" data-index="${i}" style="font-size:.8rem;padding:.4rem .75rem;flex:1;text-align:center">📥 Download JPG</button>
+                    <button class="btn btn-secondary ig-open-btn" data-index="${i}" style="font-size:.8rem;padding:.4rem .75rem">🔗 Open</button>
                   </div>
                 </div>
               `).join('')}
             </div>
           `;
 
-          // Bind open buttons
+          // Bind open buttons — opens blob URL in new tab
           result.querySelectorAll('.ig-open-btn').forEach(btn => {
-            btn.addEventListener('click', () => window.open(btn.dataset.url, '_blank'));
+            btn.addEventListener('click', () => {
+              const idx = parseInt(btn.dataset.index);
+              window.open(validImages[idx].blobUrl, '_blank');
+            });
           });
-          // Bind download buttons
+          // Bind download buttons — downloads as proper .jpg
           result.querySelectorAll('.ig-download-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-              try {
-                const proxy = `https://corsproxy.io/?${encodeURIComponent(btn.dataset.url)}`;
-                const resp = await fetch(proxy);
-                const blob = await resp.blob();
-                downloadBlob(blob, btn.dataset.name);
-              } catch {
-                window.open(btn.dataset.url, '_blank');
-              }
+            btn.addEventListener('click', () => {
+              const idx = parseInt(btn.dataset.index);
+              downloadBlob(validImages[idx].blob, `instagram-${shortcode}-${idx + 1}.jpg`);
             });
           });
         }
-        showToast(`Found ${imageUrls.length} image${imageUrls.length > 1 ? 's' : ''}!`);
+        showToast(`Found ${validImages.length} image${validImages.length > 1 ? 's' : ''}!`);
       } catch (e) {
         if (loading) loading.style.display = 'none';
         if (result) {
