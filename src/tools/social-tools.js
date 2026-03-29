@@ -491,69 +491,71 @@ function setupSocialTool(toolId) {
       if (fetchBtn) { fetchBtn.disabled = true; fetchBtn.innerHTML = '<span class="spinner-sm"></span> Fetching...'; }
 
       try {
-        const imageUrls = await fetchInstagramImages(shortcode);
+        // Use Instagram's /media/ endpoint - it redirects to the actual image
+        const mediaUrl = `https://www.instagram.com/p/${shortcode}/media/?size=l`;
+        
+        // Try multiple proxies to fetch the actual image
+        const proxies = [
+          (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+          (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+          (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+        ];
 
-        if (imageUrls.length === 0) {
-          throw new Error('No images found. The post may be private or the URL may be incorrect.');
+        let imageBlob = null;
+        
+        for (const buildProxy of proxies) {
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
+            const resp = await fetch(buildProxy(mediaUrl), { signal: controller.signal });
+            clearTimeout(timeout);
+            
+            if (!resp.ok) continue;
+            
+            const blob = await resp.blob();
+            // Validate it's actually an image (real images are >10KB)
+            if (blob.size > 10000) {
+              imageBlob = blob;
+              break;
+            }
+          } catch {
+            continue;
+          }
         }
+
+        if (!imageBlob) {
+          throw new Error('Could not fetch the image. The post may be private or Instagram is blocking requests.');
+        }
+
+        // Ensure correct MIME type
+        const jpgBlob = new Blob([imageBlob], { type: 'image/jpeg' });
+        const blobUrl = URL.createObjectURL(jpgBlob);
 
         if (loading) loading.style.display = 'none';
-
-        // Fetch all images as blob URLs for preview
-        const proxyBase = 'https://corsproxy.io/?';
-        const imageBlobs = await Promise.all(
-          imageUrls.map(async (imgUrl) => {
-            try {
-              const resp = await fetch(proxyBase + encodeURIComponent(imgUrl));
-              const blob = await resp.blob();
-              // Force JPEG type if content-type is wrong
-              const jpegBlob = new Blob([blob], { type: 'image/jpeg' });
-              return { blobUrl: URL.createObjectURL(jpegBlob), blob: jpegBlob, original: imgUrl };
-            } catch {
-              return null;
-            }
-          })
-        );
-        const validImages = imageBlobs.filter(Boolean);
-
-        if (validImages.length === 0) {
-          throw new Error('Could not load images. The post may be private.');
-        }
-
         if (result) {
           result.innerHTML = `
             <div style="margin-bottom:1rem">
-              <span style="font-size:.9rem;font-weight:600;color:var(--text)">Found ${validImages.length} image${validImages.length > 1 ? 's' : ''}</span>
+              <span style="font-size:.9rem;font-weight:600;color:var(--text)">✅ Image fetched successfully</span>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem">
-              ${validImages.map((img, i) => `
-                <div style="background:var(--surface);border-radius:12px;overflow:hidden;border:1px solid var(--border)">
-                  <img src="${img.blobUrl}" alt="Instagram post image ${i + 1}" style="width:100%;display:block;aspect-ratio:1;object-fit:cover" />
-                  <div style="padding:.75rem;display:flex;gap:.5rem;flex-wrap:wrap">
-                    <button class="btn btn-primary ig-download-btn" data-index="${i}" style="font-size:.8rem;padding:.4rem .75rem;flex:1;text-align:center">📥 Download JPG</button>
-                    <button class="btn btn-secondary ig-open-btn" data-index="${i}" style="font-size:.8rem;padding:.4rem .75rem">🔗 Open</button>
-                  </div>
+            <div style="max-width:500px;margin:0 auto">
+              <div style="background:var(--surface);border-radius:12px;overflow:hidden;border:1px solid var(--border)">
+                <img src="${blobUrl}" alt="Instagram post" style="width:100%;display:block;object-fit:contain" />
+                <div style="padding:1rem;display:flex;gap:.75rem">
+                  <button class="btn btn-primary" id="igDownloadFinal" style="flex:1;text-align:center">📥 Download JPG</button>
+                  <button class="btn btn-secondary" id="igOpenFinal">🔗 Open Full Size</button>
                 </div>
-              `).join('')}
+              </div>
             </div>
           `;
 
-          // Bind open buttons — opens blob URL in new tab
-          result.querySelectorAll('.ig-open-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-              const idx = parseInt(btn.dataset.index);
-              window.open(validImages[idx].blobUrl, '_blank');
-            });
+          document.getElementById('igDownloadFinal')?.addEventListener('click', () => {
+            downloadBlob(jpgBlob, `instagram-${shortcode}.jpg`);
           });
-          // Bind download buttons — downloads as proper .jpg
-          result.querySelectorAll('.ig-download-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-              const idx = parseInt(btn.dataset.index);
-              downloadBlob(validImages[idx].blob, `instagram-${shortcode}-${idx + 1}.jpg`);
-            });
+          document.getElementById('igOpenFinal')?.addEventListener('click', () => {
+            window.open(blobUrl, '_blank');
           });
         }
-        showToast(`Found ${validImages.length} image${validImages.length > 1 ? 's' : ''}!`);
+        showToast('Image fetched successfully!');
       } catch (e) {
         if (loading) loading.style.display = 'none';
         if (result) {
