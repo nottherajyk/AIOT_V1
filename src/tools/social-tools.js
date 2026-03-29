@@ -491,23 +491,14 @@ function setupSocialTool(toolId) {
       if (fetchBtn) { fetchBtn.disabled = true; fetchBtn.innerHTML = '<span class="spinner-sm"></span> Fetching...'; }
 
       try {
-        // Use our own serverless API to bypass CORS
         const apiUrl = `/api/instagram?shortcode=${encodeURIComponent(shortcode)}`;
-        const resp = await fetch(apiUrl);
+        
+        // Ensure the API actually returns an image by pinging it first
+        const resp = await fetch(apiUrl, { method: 'HEAD' });
         
         if (!resp.ok) {
-          const errData = await resp.json().catch(() => ({}));
-          throw new Error(errData.error || 'Failed to fetch post. It may be private.');
+          throw new Error('Failed to fetch post. It may be private or unavailable.');
         }
-
-        const imageBlob = await resp.blob();
-        
-        if (imageBlob.size < 1000) {
-          throw new Error('No image found. The post may be private.');
-        }
-
-        const jpgBlob = new Blob([imageBlob], { type: 'image/jpeg' });
-        const blobUrl = URL.createObjectURL(jpgBlob);
 
         if (loading) loading.style.display = 'none';
         if (result) {
@@ -517,7 +508,7 @@ function setupSocialTool(toolId) {
             </div>
             <div style="max-width:500px;margin:0 auto">
               <div style="background:var(--surface);border-radius:12px;overflow:hidden;border:1px solid var(--border)">
-                <img src="${blobUrl}" alt="Instagram post" style="width:100%;display:block;object-fit:contain" />
+                <img src="${apiUrl}" alt="Instagram post" style="width:100%;display:block;object-fit:contain" />
                 <div style="padding:1rem;display:flex;gap:.75rem">
                   <button class="btn btn-primary" id="igDownloadFinal" style="flex:1;text-align:center">📥 Download JPG</button>
                   <button class="btn btn-secondary" id="igOpenFinal">🔗 Open Full Size</button>
@@ -527,10 +518,17 @@ function setupSocialTool(toolId) {
           `;
 
           document.getElementById('igDownloadFinal')?.addEventListener('click', () => {
-            downloadBlob(jpgBlob, `instagram-${shortcode}.jpg`);
+            // Let the browser handle the download directly using the API's attachment header
+            const downloadUrl = apiUrl + '&download=1';
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `instagram-${shortcode}.jpg`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
           });
           document.getElementById('igOpenFinal')?.addEventListener('click', () => {
-            window.open(blobUrl, '_blank');
+            window.open(apiUrl, '_blank');
           });
         }
         showToast('Image fetched successfully!');

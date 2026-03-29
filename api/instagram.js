@@ -35,13 +35,17 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'No image found. Post may be private.' });
     }
 
+    const disposition = req.query.download === '1' ? 'attachment' : 'inline';
+
     // Set headers for image response
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Length', buffer.length);
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Disposition', `${disposition}; filename="instagram-${shortcode}.jpg"`);
     res.send(buffer);
   } catch (error) {
     return res.status(500).json({ error: 'Server error: ' + error.message });
   }
 }
+
