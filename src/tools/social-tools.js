@@ -491,43 +491,21 @@ function setupSocialTool(toolId) {
       if (fetchBtn) { fetchBtn.disabled = true; fetchBtn.innerHTML = '<span class="spinner-sm"></span> Fetching...'; }
 
       try {
-        // Use Instagram's /media/ endpoint - it redirects to the actual image
-        const mediaUrl = `https://www.instagram.com/p/${shortcode}/media/?size=l`;
+        // Use our own serverless API to bypass CORS
+        const apiUrl = `/api/instagram?shortcode=${encodeURIComponent(shortcode)}`;
+        const resp = await fetch(apiUrl);
         
-        // Try multiple proxies to fetch the actual image
-        const proxies = [
-          (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-          (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-          (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-        ];
-
-        let imageBlob = null;
-        
-        for (const buildProxy of proxies) {
-          try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 15000);
-            const resp = await fetch(buildProxy(mediaUrl), { signal: controller.signal });
-            clearTimeout(timeout);
-            
-            if (!resp.ok) continue;
-            
-            const blob = await resp.blob();
-            // Validate it's actually an image (real images are >10KB)
-            if (blob.size > 10000) {
-              imageBlob = blob;
-              break;
-            }
-          } catch {
-            continue;
-          }
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to fetch post. It may be private.');
         }
 
-        if (!imageBlob) {
-          throw new Error('Could not fetch the image. The post may be private or Instagram is blocking requests.');
+        const imageBlob = await resp.blob();
+        
+        if (imageBlob.size < 1000) {
+          throw new Error('No image found. The post may be private.');
         }
 
-        // Ensure correct MIME type
         const jpgBlob = new Blob([imageBlob], { type: 'image/jpeg' });
         const blobUrl = URL.createObjectURL(jpgBlob);
 
