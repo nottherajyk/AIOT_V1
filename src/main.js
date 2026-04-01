@@ -16,10 +16,10 @@ function render() {
 
 /* ── Search helpers ── */
 const catMeta = {
-  image: { label: 'Image', color: '#4a7c59' },
-  pdf:   { label: 'PDF',   color: '#c4956a' },
-  social:{ label: 'Social', color: '#5f8a8b' },
-  text:  { label: 'Text',  color: '#8fbc8f' },
+  image: { label: 'Image', color: '#d6c0a2' },
+  pdf:   { label: 'PDF',   color: '#c4ae8d' },
+  social:{ label: 'Social', color: '#b09c7a' },
+  text:  { label: 'Text',  color: '#8c7d62' },
 };
 
 function highlightMatch(text, query) {
